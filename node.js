@@ -4,7 +4,6 @@ const sha1 = require('sha1');
 
 const pool = require('../lib/pool');
 
-
 module.exports = {
   // 用户登录
   login: function (req, res) {
@@ -29,6 +28,9 @@ module.exports = {
           req.flash('error', '用户不存在');
           return res.redirect('back');
         }
+        console.log(password.length);
+        console.log(sha1(123456));
+        console.log(result[0].password);
         // 检查密码是否匹配
         if (sha1(password) !== result[0].password) {
           req.flash('error', '用户名或密码错误');
@@ -73,13 +75,13 @@ module.exports = {
         throw new Error('个人简介请限制在 1-30 个字符')
       }
     } catch (e) {
+      req.flash('error', e.message);
       // 注册失败，异步删除上传的头像
       fs.unlink(req.files.avatar.path, function (err) {
-        if(err) throw err;
+        if (err) throw err;
         console.log('成功')
       });
-      req.flash('error', e.message);
-      return res.redirect('/signup');
+      return res.redirect('back');
     }
     // 明文密码加密
     password = sha1(password);
@@ -91,21 +93,22 @@ module.exports = {
       avatar: avatar
     };
     // 用户信息写入数据库
-    pool.getConnection((err, conn)=>{
+    pool.getConnection((err, conn) => {
       conn.query('select * from user where user.name = ?', [name], (err, result) => {
         res.setHeader('Content-Type', 'text/html;charset=UTF-8');
         if (result.length !== 0) {
           // 注册失败，异步删除上传的头像
           fs.unlink(req.files.avatar.path, function (err) {
-            if(err) throw err;
+            if (err) throw err;
             console.log('成功')
           });
           req.flash('error', '用户已存在');
           conn.release();
           return res.redirect('back');
         } else {
-          conn.query('INSERT INTO user VALUES(NULL,?,?,?,?,?)',[name, password, gender, bio, avatar], (err, result)=>{
-            res.setHeader('Content-Type','text/html;charset=UTF-8');
+          conn.query('INSERT INTO user VALUES(NULL,?,?,?,?,?)', [name, password, gender, bio, avatar], (err, result) => {
+            res.setHeader('Content-Type', 'text/html;charset=UTF-8');
+            console.log(11111);
             // 删除密码这种敏感信息，将用户信息存入 session
             delete user.password;
             req.session.user = user;
@@ -118,5 +121,34 @@ module.exports = {
         }
       });
     });
+  },
+  createArticle: function (req, res) {
+    const author_id = req.session.user.id;
+    const author = req.session.user.name;
+    const title = req.fields.title;
+    const content = req.fields.content;
+    // 校验参数
+    try {
+      if (!title.length) {
+        throw new Error('请填写标题')
+      }
+      if (!content.length) {
+        throw new Error('请填写内容')
+      }
+    } catch (e) {
+      req.flash('error', e.message);
+      return res.redirect('back')
+    }
+    pool.getConnection((err, conn) => {
+      conn.query('INSERT INTO article VALUES(NULL,?,?,?,?,NULL)', [author_id, author, title, content], (err, result) => {
+        res.setHeader('Content-Type', 'text/html;charset=UTF-8');
+        // 写入 flash
+        req.flash('success', '添加成功');
+        conn.release();
+        // 跳转到主页面
+        res.redirect('/posts');
+      });
+    });
   }
+
 };
